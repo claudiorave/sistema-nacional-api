@@ -1,0 +1,57 @@
+name: sistema-nacional
+
+x-api: &api
+  build: .
+  image: sistema-nacional:local
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-nacional}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}@db:5432/${POSTGRES_DB:-sistema_nacional}
+    CACHE_URL: redis://cache:6379/0
+    PORT: "8000"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sistema_nacional}
+      POSTGRES_USER: ${POSTGRES_USER:-nacional}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+  cache:
+    image: redis:7-alpine
+    command: [redis-server, --save, "", --appendonly, "no"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+  migrate:
+    <<: *api
+    command: [python, manage.py, migrate, --noinput]
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    restart: "no"
+  api:
+    <<: *api
+    ports:
+      - "127.0.0.1:8002:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

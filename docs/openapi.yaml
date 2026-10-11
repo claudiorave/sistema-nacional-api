@@ -1,0 +1,2170 @@
+openapi: 3.0.3
+info:
+  title: Sistema Nacional de Gestión de Recursos y Riesgos
+  version: 1.0.0
+  description: 'RescueSync · Entrega 3. JWT, competencias, disponibilidad y compromisos
+    nacionales. Validar no reserva: el compromiso es transaccional y posterior a la
+    adjudicación.'
+paths:
+  /api/v1/audit-events/:
+    get:
+      operationId: api_v1_audit_events_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditList'
+          description: ''
+  /api/v1/audit-events/{id}/:
+    get:
+      operationId: api_v1_audit_events_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Audit'
+          description: ''
+  /api/v1/auth/login/:
+    post:
+      operationId: api_v1_auth_login_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: No response body
+  /api/v1/auth/logout/:
+    post:
+      operationId: api_v1_auth_logout_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/me/:
+    get:
+      operationId: api_v1_auth_me_retrieve
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: api_v1_auth_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refresh'
+          description: ''
+  /api/v1/auth/register/:
+    post:
+      operationId: api_v1_auth_register_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'
+          description: ''
+  /api/v1/certification-types/:
+    get:
+      operationId: api_v1_certification_types_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCertificationTypeList'
+          description: ''
+    post:
+      operationId: api_v1_certification_types_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificationTypeRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificationType'
+          description: ''
+  /api/v1/certification-types/{id}/:
+    get:
+      operationId: api_v1_certification_types_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificationType'
+          description: ''
+  /api/v1/certifications/:
+    get:
+      operationId: api_v1_certifications_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCertificationList'
+          description: ''
+    post:
+      operationId: api_v1_certifications_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certification'
+          description: ''
+  /api/v1/certifications/{id}/:
+    get:
+      operationId: api_v1_certifications_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certification'
+          description: ''
+  /api/v1/certifications/{id}/revoke/:
+    post:
+      operationId: api_v1_certifications_revoke_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReasonRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certification'
+          description: ''
+  /api/v1/commitments/:
+    get:
+      operationId: api_v1_commitments_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommitmentList'
+          description: ''
+    post:
+      operationId: api_v1_commitments_create
+      description: 'Solo integración Bonita. Crea el proyecto adjudicado y todos sus
+        compromisos en una transacción PostgreSQL. Reevalúa competencia y disponibilidad
+        bajo lock. Reintento idéntico: 200; clave reutilizada con otro contenido:
+        409.'
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: Clave estable por adjudicación, 1–128 caracteres alfanuméricos,
+          guion, punto, dos puntos o guion bajo.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitmentRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+  /api/v1/commitments/{id}/:
+    get:
+      operationId: api_v1_commitments_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Commitment'
+          description: ''
+  /api/v1/commitments/{id}/complete/:
+    post:
+      operationId: api_v1_commitments_complete_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompletionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Commitment'
+          description: ''
+  /api/v1/inventory/:
+    get:
+      operationId: api_v1_inventory_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInventoryList'
+          description: ''
+    post:
+      operationId: api_v1_inventory_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inventory'
+          description: ''
+  /api/v1/inventory/{id}/:
+    get:
+      operationId: api_v1_inventory_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inventory'
+          description: ''
+    put:
+      operationId: api_v1_inventory_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inventory'
+          description: ''
+    patch:
+      operationId: api_v1_inventory_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedInventoryUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inventory'
+          description: ''
+  /api/v1/organization-references/:
+    get:
+      operationId: api_v1_organization_references_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReferenceList'
+          description: ''
+    post:
+      operationId: api_v1_organization_references_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reference'
+          description: ''
+  /api/v1/organization-references/{id}/:
+    get:
+      operationId: api_v1_organization_references_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reference'
+          description: ''
+  /api/v1/organizations/:
+    get:
+      operationId: api_v1_organizations_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrganizationList'
+          description: ''
+  /api/v1/organizations/{id}/:
+    get:
+      operationId: api_v1_organizations_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationPrivate'
+          description: ''
+    patch:
+      operationId: api_v1_organizations_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationPrivate'
+          description: ''
+  /api/v1/organizations/{id}/competence/:
+    get:
+      operationId: api_v1_organizations_competence_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Competence'
+          description: ''
+  /api/v1/organizations/{id}/status/:
+    post:
+      operationId: api_v1_organizations_status_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationStatusRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/v1/projects/:
+    get:
+      operationId: api_v1_projects_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProjectList'
+          description: ''
+  /api/v1/projects/{id}/:
+    get:
+      operationId: api_v1_projects_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+  /api/v1/projects/{id}/close/:
+    post:
+      operationId: api_v1_projects_close_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+  /api/v1/resource-types/:
+    get:
+      operationId: api_v1_resource_types_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResourceTypeList'
+          description: ''
+    post:
+      operationId: api_v1_resource_types_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceTypeRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceType'
+          description: ''
+  /api/v1/resource-types/{id}/:
+    get:
+      operationId: api_v1_resource_types_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceType'
+          description: ''
+  /api/v1/resources/availability/:
+    get:
+      operationId: api_v1_resources_availability_list
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Availability'
+          description: ''
+  /api/v1/validations/:
+    post:
+      operationId: api_v1_validations_create
+      description: Consulta sin persistencia de ofertas ni reservas. Cada ítem declara
+        el riesgo de la tarea concreta. La recomendación de apoyo puede requerir adaptar
+        ese riesgo.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+          description: ''
+  /health/live/:
+    get:
+      operationId: health_live_retrieve
+      tags:
+      - health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+  /health/ready/:
+    get:
+      operationId: health_ready_retrieve
+      tags:
+      - health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+  /login:
+    post:
+      operationId: login_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    AssignmentEnum:
+      enum:
+      - main
+      - support
+      type: string
+      description: |-
+        * `main` - Principal
+        * `support` - Apoyo secundario
+    Audit:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        actor:
+          type: integer
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        project:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        action:
+          type: string
+          readOnly: true
+        detail:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - actor
+      - created_at
+      - detail
+      - id
+      - organization
+      - project
+    Availability:
+      type: object
+      properties:
+        resource_code:
+          type: string
+        unit:
+          type: string
+        total_quantity:
+          type: integer
+        reserved_quantity:
+          type: integer
+        available_quantity:
+          type: integer
+      required:
+      - available_quantity
+      - reserved_quantity
+      - resource_code
+      - total_quantity
+      - unit
+    Capability:
+      type: object
+      properties:
+        capability_code:
+          type: string
+        max_risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+        allowed_risk_levels:
+          type: array
+          items:
+            type: string
+        certification_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - allowed_risk_levels
+      - capability_code
+      - certification_ids
+      - max_risk_level
+    CategoryEnum:
+      enum:
+      - supplies
+      - personnel
+      - equipment
+      type: string
+      description: |-
+        * `supplies` - Suministros
+        * `personnel` - Personal
+        * `equipment` - Equipamiento
+    Certification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+        certification_type:
+          type: string
+          format: uuid
+        credential_number:
+          type: string
+          maxLength: 100
+        issuer:
+          type: string
+          maxLength: 160
+        valid_from:
+          type: string
+          format: date
+        valid_until:
+          type: string
+          format: date
+        revoked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        is_current:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - certification_type
+      - created_at
+      - credential_number
+      - id
+      - is_current
+      - issuer
+      - organization
+      - revoked_at
+      - valid_from
+      - valid_until
+    CertificationRequest:
+      type: object
+      properties:
+        organization:
+          type: string
+          format: uuid
+        certification_type:
+          type: string
+          format: uuid
+        credential_number:
+          type: string
+          minLength: 1
+          maxLength: 100
+        issuer:
+          type: string
+          minLength: 1
+          maxLength: 160
+        valid_from:
+          type: string
+          format: date
+        valid_until:
+          type: string
+          format: date
+      required:
+      - certification_type
+      - credential_number
+      - issuer
+      - organization
+      - valid_from
+      - valid_until
+    CertificationType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          maxLength: 160
+        capability_code:
+          type: string
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        max_risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+        description:
+          type: string
+          maxLength: 2000
+      required:
+      - capability_code
+      - code
+      - id
+      - max_risk_level
+      - name
+    CertificationTypeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        capability_code:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        max_risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+        description:
+          type: string
+          maxLength: 2000
+      required:
+      - capability_code
+      - code
+      - max_risk_level
+      - name
+    Commitment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        project:
+          type: string
+          format: uuid
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/CommitmentStatusEnum'
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitmentItem'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        completion_notes:
+          type: string
+          readOnly: true
+      required:
+      - completed_at
+      - completion_notes
+      - created_at
+      - id
+      - items
+      - organization
+      - project
+      - status
+    CommitmentItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        inventory:
+          type: string
+          format: uuid
+          readOnly: true
+        resource_code:
+          type: string
+        unit:
+          type: string
+        lot_ref:
+          type: string
+          readOnly: true
+        quantity:
+          type: integer
+          readOnly: true
+        assignment:
+          allOf:
+          - $ref: '#/components/schemas/AssignmentEnum'
+          readOnly: true
+        risk_level:
+          allOf:
+          - $ref: '#/components/schemas/RiskLevelEnum'
+          readOnly: true
+        competence_snapshot:
+          readOnly: true
+      required:
+      - assignment
+      - competence_snapshot
+      - id
+      - inventory
+      - lot_ref
+      - quantity
+      - resource_code
+      - risk_level
+      - unit
+    CommitmentRequestItemRequest:
+      type: object
+      properties:
+        organization:
+          type: string
+          format: uuid
+        resource_code:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        lot_ref:
+          type: string
+          minLength: 1
+          maxLength: 100
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+        assignment:
+          $ref: '#/components/schemas/AssignmentEnum'
+      required:
+      - assignment
+      - lot_ref
+      - organization
+      - quantity
+      - resource_code
+      - risk_level
+    CommitmentRequestRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitmentRequestItemRequest'
+        project:
+          $ref: '#/components/schemas/ProjectInputRequest'
+      required:
+      - items
+      - project
+    CommitmentStatusEnum:
+      enum:
+      - active
+      - completed
+      type: string
+      description: |-
+        * `active` - Comprometido
+        * `completed` - Actividad finalizada
+    Competence:
+      type: object
+      properties:
+        organization:
+          type: string
+          format: uuid
+        organization_status:
+          type: string
+        evaluated_at:
+          type: string
+          format: date-time
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+        support_capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+        credential_observations:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - capabilities
+      - credential_observations
+      - evaluated_at
+      - organization
+      - organization_status
+      - support_capabilities
+    CompletionRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+          default: ''
+          maxLength: 2000
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    Inventory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+          readOnly: true
+        resource_type:
+          type: string
+          format: uuid
+          readOnly: true
+        resource_code:
+          type: string
+        unit:
+          type: string
+        total_quantity:
+          type: integer
+          readOnly: true
+        reserved_quantity:
+          type: integer
+          readOnly: true
+        available_quantity:
+          type: integer
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - available_quantity
+      - id
+      - organization
+      - reserved_quantity
+      - resource_code
+      - resource_type
+      - total_quantity
+      - unit
+      - updated_at
+      - version
+    InventoryCreateRequest:
+      type: object
+      properties:
+        organization:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+          format: uuid
+        total_quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - resource_type
+      - total_quantity
+    InventoryUpdateRequest:
+      type: object
+      properties:
+        total_quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        version:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+      required:
+      - total_quantity
+      - version
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+      - username
+    LogoutRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        city:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OrganizationStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - city
+      - created_at
+      - id
+      - name
+      - status
+    OrganizationPrivate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        city:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OrganizationStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        registration_number:
+          type: string
+          readOnly: true
+        contact_email:
+          type: string
+          format: email
+          readOnly: true
+      required:
+      - city
+      - contact_email
+      - created_at
+      - id
+      - name
+      - registration_number
+      - status
+    OrganizationStatusEnum:
+      enum:
+      - pending
+      - enabled
+      - suspended
+      type: string
+      description: |-
+        * `pending` - Pendiente de revisión
+        * `enabled` - Habilitada
+        * `suspended` - Suspendida
+    OrganizationStatusRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/OrganizationStatusEnum'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+      required:
+      - reason
+      - status
+    PaginatedAuditList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audit'
+    PaginatedCertificationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Certification'
+    PaginatedCertificationTypeList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificationType'
+    PaginatedCommitmentList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Commitment'
+    PaginatedInventoryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Inventory'
+    PaginatedOrganizationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+    PaginatedProjectList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+    PaginatedReferenceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reference'
+    PaginatedResourceTypeList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceType'
+    PatchedInventoryUpdateRequest:
+      type: object
+      properties:
+        total_quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        version:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+    PatchedOrganizationUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        contact_email:
+          type: string
+          format: email
+          minLength: 1
+        city:
+          type: string
+          minLength: 1
+          maxLength: 120
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        source_system:
+          type: string
+          format: uuid
+          readOnly: true
+        external_id:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        bonita_case_id:
+          type: string
+          readOnly: true
+        municipality_ref:
+          type: string
+          readOnly: true
+        risk_level:
+          allOf:
+          - $ref: '#/components/schemas/RiskLevelEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ProjectStatusEnum'
+          readOnly: true
+        commitments:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - bonita_case_id
+      - commitments
+      - completed_at
+      - created_at
+      - external_id
+      - id
+      - municipality_ref
+      - risk_level
+      - source_system
+      - status
+      - title
+    ProjectInputRequest:
+      type: object
+      properties:
+        external_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+        title:
+          type: string
+          minLength: 1
+          maxLength: 160
+        bonita_case_id:
+          type: string
+          default: ''
+          maxLength: 100
+        municipality_ref:
+          type: string
+          default: ''
+          maxLength: 100
+        risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+      required:
+      - external_id
+      - risk_level
+      - title
+    ProjectStatusEnum:
+      enum:
+      - active
+      - completed
+      type: string
+      description: |-
+        * `active` - En ejecución
+        * `completed` - Cerrado
+    ReasonRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+      required:
+      - reason
+    RecommendedAssignmentEnum:
+      enum:
+      - main
+      - support
+      - none
+      type: string
+      description: |-
+        * `main` - main
+        * `support` - support
+        * `none` - none
+    Reference:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        source_system:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+          maxLength: 100
+        organization:
+          type: string
+          format: uuid
+      required:
+      - external_id
+      - id
+      - organization
+      - source_system
+    ReferenceRequest:
+      type: object
+      properties:
+        source_system:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+        organization:
+          type: string
+          format: uuid
+      required:
+      - external_id
+      - organization
+      - source_system
+    Refresh:
+      type: object
+      properties:
+        refresh:
+          type: string
+        access:
+          type: string
+          readOnly: true
+      required:
+      - access
+      - refresh
+    RefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    RegistrationRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+        organization_name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        registration_number:
+          type: string
+          minLength: 1
+          maxLength: 40
+        city:
+          type: string
+          minLength: 1
+          maxLength: 120
+      required:
+      - city
+      - email
+      - organization_name
+      - password
+      - registration_number
+      - username
+    RegistrationResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        organization:
+          $ref: '#/components/schemas/OrganizationPrivate'
+      required:
+      - organization
+      - user
+    ResourceType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          maxLength: 160
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        unit:
+          type: string
+          maxLength: 60
+        capability_code:
+          type: string
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        support_allowed:
+          type: boolean
+        support_max_risk:
+          $ref: '#/components/schemas/RiskLevelEnum'
+      required:
+      - capability_code
+      - category
+      - code
+      - id
+      - name
+      - unit
+    ResourceTypeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 60
+        capability_code:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        support_allowed:
+          type: boolean
+        support_max_risk:
+          $ref: '#/components/schemas/RiskLevelEnum'
+      required:
+      - capability_code
+      - category
+      - code
+      - name
+      - unit
+    RiskLevelEnum:
+      enum:
+      - low
+      - medium
+      - high
+      - critical
+      type: string
+      description: |-
+        * `low` - Bajo
+        * `medium` - Medio
+        * `high` - Alto
+        * `critical` - Crítico
+    RoleEnum:
+      enum:
+      - ngo
+      - national
+      - service
+      - auditor
+      type: string
+      description: |-
+        * `ngo` - Representante de ONG
+        * `national` - Operador nacional
+        * `service` - Integración Bonita
+        * `auditor` - Auditor
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+          title: Nombre de usuario
+          description: Obligatorio. Longitud máxima de 150 caracteres. Solo puede
+            estar formado por letras, números y los caracteres @/./+/-/_.
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Dirección de email
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        source_system:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+      required:
+      - email
+      - id
+      - organization
+      - role
+      - source_system
+      - username
+    ValidationItemRequest:
+      type: object
+      properties:
+        organization:
+          type: string
+          format: uuid
+        resource_code:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        lot_ref:
+          type: string
+          minLength: 1
+          maxLength: 100
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+      required:
+      - lot_ref
+      - organization
+      - quantity
+      - resource_code
+      - risk_level
+    ValidationRequestRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationItemRequest'
+      required:
+      - items
+    ValidationResponse:
+      type: object
+      properties:
+        evaluated_at:
+          type: string
+          format: date-time
+        reserves_resources:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationResultItem'
+      required:
+      - evaluated_at
+      - items
+      - reserves_resources
+    ValidationResultItem:
+      type: object
+      properties:
+        organization:
+          type: string
+          format: uuid
+        resource_code:
+          type: string
+          maxLength: 60
+          pattern: ^[-a-zA-Z0-9_]+$
+        lot_ref:
+          type: string
+          maxLength: 100
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        risk_level:
+          $ref: '#/components/schemas/RiskLevelEnum'
+        unit:
+          type: string
+        available_quantity:
+          type: integer
+        max_assignable_quantity:
+          type: integer
+        main_allowed_risk_levels:
+          type: array
+          items:
+            type: string
+        support_allowed_risk_levels:
+          type: array
+          items:
+            type: string
+        recommended_assignment:
+          $ref: '#/components/schemas/RecommendedAssignmentEnum'
+        observations:
+          type: array
+          items:
+            type: string
+        competence:
+          $ref: '#/components/schemas/Competence'
+      required:
+      - available_quantity
+      - competence
+      - lot_ref
+      - main_allowed_risk_levels
+      - max_assignable_quantity
+      - observations
+      - organization
+      - quantity
+      - recommended_assignment
+      - resource_code
+      - risk_level
+      - support_allowed_risk_levels
+      - unit
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,54 @@
+# Revisar los planes/costos antes de crear el Blueprint. No ejecutado automáticamente.
+services:
+  - type: web
+    name: sistema-nacional
+    runtime: docker
+    plan: 0.5c-512mb
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    preDeployCommand: python manage.py migrate --noinput
+    healthCheckPath: /health/ready/
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        sync: false
+      - key: JWT_SIGNING_KEY
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      - key: NUM_PROXIES
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sistema-nacional-db
+          property: connectionString
+      - key: CACHE_URL
+        fromService:
+          type: keyvalue
+          name: sistema-nacional-cache
+          property: connectionString
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: GUNICORN_THREADS
+        value: "4"
+  - type: keyvalue
+    name: sistema-nacional-cache
+    plan: 256mb
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+
+databases:
+  - name: sistema-nacional-db
+    plan: basic-256mb
+    region: oregon
+    databaseName: sistema_nacional
+    user: nacional
+    postgresMajorVersion: "17"
+    ipAllowList: []

@@ -1,0 +1,54 @@
+name: Django API
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: nacional_ci
+          POSTGRES_USER: nacional_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U nacional_ci -d nacional_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      DEBUG: "true"
+      SECRET_KEY: ci-only-secret-key-for-national-api-never-use-in-production
+      JWT_SIGNING_KEY: ci-only-independent-jwt-signing-key-never-use-in-production
+      DATABASE_URL: postgresql://nacional_ci:ci-only-password@127.0.0.1:5432/nacional_ci
+      CACHE_URL: redis://127.0.0.1:6379/0
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check . && ruff format --check .
+      - run: python manage.py migrate --noinput
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: coverage run manage.py test tests --settings=config.test_settings --noinput
+      - run: coverage report
+      - run: python manage.py spectacular --file /tmp/openapi.yaml --validate --fail-on-warn
+      - run: diff -u docs/openapi.yaml /tmp/openapi.yaml
+      - run: python manage.py check --deploy --fail-level WARNING
+        env:
+          DEBUG: "false"
+      - run: docker build -t sistema-nacional:ci .
