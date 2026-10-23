@@ -1,0 +1,3033 @@
+{
+  "info": {
+    "name": "Sistema Nacional · RescueSync (Grupo 20)",
+    "description": "Recorrido completo de la API del Sistema Nacional (Entrega 3): JWT, onboarding de ONGs, certificaciones, competencia, disponibilidad, validación sin reserva, compromiso con locking e idempotencia, liberación y cierre.\n\nUso: importar la colección y un entorno (`produccion` o `local`), completar las contraseñas en el entorno y ejecutar con el Runner, en orden. Guía completa en `docs/postman/README.md`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Preparación",
+      "description": "Genera los datos únicos de esta corrida (usuario y CUIT de la ONG de prueba, fechas) y verifica que la API y su base estén operativas.",
+      "item": [
+        {
+          "name": "Salud de la API (sin token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready",
+                ""
+              ]
+            },
+            "description": "Público. Comprueba conexión con PostgreSQL y Redis. Si da 503, la API está levantada pero sin base o caché.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Datos únicos por corrida: permiten ejecutar la colección varias veces sin choques.",
+                  "const run = Date.now().toString(36);",
+                  "const azar = pm.variables.replaceIn('{{$guid}}').replace(/-/g, '');",
+                  "pm.collectionVariables.set('runId', run);",
+                  "pm.collectionVariables.set('ongUsuario', 'ong_pm_' + run);",
+                  "pm.collectionVariables.set('ongContrasena', 'Pm!' + azar.slice(0, 20));",
+                  "pm.collectionVariables.set('ongRegistro', 'PM-' + run.toUpperCase());",
+                  "const hoy = new Date();",
+                  "const ayer = new Date(hoy.getTime() - 24 * 3600 * 1000);",
+                  "const enUnAnio = new Date(hoy.getTime() + 365 * 24 * 3600 * 1000);",
+                  "pm.collectionVariables.set('fechaDesde', ayer.toISOString().slice(0, 10));",
+                  "pm.collectionVariables.set('fechaHasta', enUnAnio.toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"PostgreSQL y Redis responden\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Autenticación JWT",
+      "description": "Login en `/login` (alias exacto pedido por el enunciado), refresh rotatorio y revocación del refresh usado.",
+      "item": [
+        {
+          "name": "Login operador nacional",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Guarda `tokenOperador` y `refreshOperador`. Decodifica el JWT para mostrar sus claims: vencimiento de 15 minutos, emisor y audiencia.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{usuarioOperador}}\",\n  \"password\": \"{{contrasenaOperador}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const datos = pm.response.json();",
+                  "pm.test(\"Devuelve access y refresh\", () => {",
+                  "    pm.expect(datos.access).to.be.a(\"string\");",
+                  "    pm.expect(datos.refresh).to.be.a(\"string\");",
+                  "});",
+                  "pm.collectionVariables.set(\"tokenOperador\", datos.access);",
+                  "pm.collectionVariables.set(\"refreshOperador\", datos.refresh);",
+                  "const claims = JSON.parse(atob(datos.access.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"El access token dura 15 minutos\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"Emisor y audiencia propios\", () => {",
+                  "    pm.expect(claims.iss).to.eql(\"sistema-nacional\");",
+                  "    pm.expect(claims.aud).to.eql(\"sistema-nacional-api\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Bonita (cuenta de servicio)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Cuenta con la que el proceso de Bonita llama a la API. Es la única que puede registrar compromisos.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{usuarioBonita}}\",\n  \"password\": \"{{contrasenaBonita}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"tokenBonita\", pm.response.json().access);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login con contraseña incorrecta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{usuarioOperador}}\",\n  \"password\": \"contrasena-incorrecta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"No entrega tokens\", () => pm.expect(pm.response.json()).to.not.have.property(\"access\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cuenta del token (operador)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Rol operador nacional\", () => pm.expect(pm.response.json().role).to.eql(\"national\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cuenta del token (Bonita)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me",
+                ""
+              ]
+            },
+            "description": "Guarda el sistema de origen de Bonita, que se usa para mapear IDs locales de la app a UUID nacionales.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const cuenta = pm.response.json();",
+                  "pm.test(\"Rol de servicio con sistema de origen\", () => {",
+                  "    pm.expect(cuenta.role).to.eql(\"service\");",
+                  "    pm.expect(cuenta.source_system).to.be.a(\"string\");",
+                  "});",
+                  "pm.collectionVariables.set(\"sistemaOrigenBonita\", cuenta.source_system);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renovar token (refresh rotatorio)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh",
+                ""
+              ]
+            },
+            "description": "Con rotación, cada refresh entrega uno nuevo y el anterior queda en la lista negra.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refreshOperador}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const datos = pm.response.json();",
+                  "pm.test(\"Entrega un access y un refresh nuevos\", () => {",
+                  "    pm.expect(datos.access).to.be.a(\"string\");",
+                  "    pm.expect(datos.refresh).to.not.eql(pm.collectionVariables.get(\"refreshOperador\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"refreshViejo\", pm.collectionVariables.get(\"refreshOperador\"));",
+                  "pm.collectionVariables.set(\"refreshOperador\", datos.refresh);",
+                  "pm.collectionVariables.set(\"tokenOperador\", datos.access);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reusar el refresh anterior (revocado)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh",
+                ""
+              ]
+            },
+            "description": "Si alguien roba un refresh ya usado, no puede obtener tokens nuevos.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refreshViejo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401 · el refresh ya rotado no sirve\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Protección de los endpoints",
+      "description": "Sin token, con token adulterado o con un rol sin permiso, la API rechaza el pedido.",
+      "item": [
+        {
+          "name": "Sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token adulterado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                ""
+              ]
+            },
+            "description": "Se agrega un carácter al final del token: la firma deja de ser válida.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}x",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401 · la firma no coincide\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bonita intenta crear un tipo de certificación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certification-types/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certification-types",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"no-permitido\",\n  \"name\": \"No permitido\",\n  \"capability_code\": \"no-permitido\",\n  \"max_risk_level\": \"low\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403 · solo el operador nacional administra el catálogo\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Operador intenta registrar un compromiso",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "no-permitido-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project\": {\n    \"external_id\": \"no-permitido\",\n    \"title\": \"No permitido\",\n    \"risk_level\": \"low\"\n  },\n  \"items\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403 · solo la cuenta de Bonita compromete recursos\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Catálogo nacional (operador)",
+      "description": "Tipos de recurso y de certificación de prueba. Si ya existen de una corrida anterior, se reutilizan (la creación responde 400 por código duplicado y el test lo acepta).",
+      "item": [
+        {
+          "name": "Listar tipos de recurso",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/resource-types/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "resource-types",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('codigoRecurso', 'postman-raciones');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const existente = pm.response.json().results.find(r => r.code === pm.collectionVariables.get(\"codigoRecurso\"));",
+                  "pm.collectionVariables.set(\"idTipoRecurso\", existente ? existente.id : \"\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear tipo de recurso de prueba (si no existe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/resource-types/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "resource-types",
+                ""
+              ]
+            },
+            "description": "Admite apoyo secundario hasta riesgo bajo: una ONG sin habilitación principal puede sumarse como apoyo en tareas de riesgo bajo.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{codigoRecurso}}\",\n  \"name\": \"Ración alimentaria (prueba Postman)\",\n  \"category\": \"supplies\",\n  \"unit\": \"ración\",\n  \"capability_code\": \"postman-alimentos\",\n  \"support_allowed\": true,\n  \"support_max_risk\": \"low\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get(\"idTipoRecurso\")) {",
+                  "    pm.test(\"Ya existía: 400 por código duplicado\", () => pm.response.to.have.status(400));",
+                  "} else {",
+                  "    pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "    pm.collectionVariables.set(\"idTipoRecurso\", pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar tipos de certificación",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certification-types/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certification-types",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('codigoCertificacion', 'postman-manipulacion-alimentos');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const existente = pm.response.json().results.find(c => c.code === pm.collectionVariables.get(\"codigoCertificacion\"));",
+                  "pm.collectionVariables.set(\"idTipoCertificacion\", existente ? existente.id : \"\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear tipo de certificación de prueba (si no existe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certification-types/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certification-types",
+                ""
+              ]
+            },
+            "description": "Habilita la capacidad `postman-alimentos` hasta riesgo medio.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{codigoCertificacion}}\",\n  \"name\": \"Manipulación de alimentos (prueba Postman)\",\n  \"capability_code\": \"postman-alimentos\",\n  \"max_risk_level\": \"medium\",\n  \"description\": \"Habilita distribución de alimentos en tareas de riesgo bajo y medio.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get(\"idTipoCertificacion\")) {",
+                  "    pm.test(\"Ya existía: 400 por código duplicado\", () => pm.response.to.have.status(400));",
+                  "} else {",
+                  "    pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "    pm.collectionVariables.set(\"idTipoCertificacion\", pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Registro y habilitación de ONGs",
+      "description": "Onboarding público: la ONG se registra sola y queda pendiente hasta que el operador nacional la habilita.",
+      "item": [
+        {
+          "name": "Registrar ONG (público, sin token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                ""
+              ]
+            },
+            "description": "Límite: 5 registros por hora por IP. El usuario y la contraseña de la ONG se generan en la Preparación.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{ongUsuario}}\",\n  \"password\": \"{{ongContrasena}}\",\n  \"email\": \"{{ongUsuario}}@example.org\",\n  \"organization_name\": \"ONG de prueba Postman {{runId}}\",\n  \"registration_number\": \"{{ongRegistro}}\",\n  \"city\": \"La Plata\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "const datos = pm.response.json();",
+                  "pm.test(\"La ONG queda pendiente\", () => pm.expect(datos.organization.status).to.eql(\"pending\"));",
+                  "pm.test(\"El usuario tiene rol ONG\", () => pm.expect(datos.user.role).to.eql(\"ngo\"));",
+                  "pm.collectionVariables.set(\"idOng\", datos.organization.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro duplicado (mismo número de registro)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{ongUsuario}}_2\",\n  \"password\": \"{{ongContrasena}}\",\n  \"email\": \"otra@example.org\",\n  \"organization_name\": \"Duplicada\",\n  \"registration_number\": \"{{ongRegistro}}\",\n  \"city\": \"La Plata\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Informa el número de registro duplicado\", () =>",
+                  "    pm.expect(pm.response.json()).to.have.property(\"registration_number\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login de la ONG",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{ongUsuario}}\",\n  \"password\": \"{{ongContrasena}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"tokenOng\", pm.response.json().access);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de la ONG (pendiente)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/{{idOng}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{idOng}}",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Estado pendiente\", () => pm.expect(pm.response.json().status).to.eql(\"pending\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bonita intenta habilitar la ONG",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/{{idOng}}/status/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{idOng}}",
+                "status",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"enabled\",\n  \"reason\": \"Intento sin permiso\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403 · solo el operador nacional habilita\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Operador habilita la ONG",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/{{idOng}}/status/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{idOng}}",
+                "status",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"enabled\",\n  \"reason\": \"Documentación verificada (prueba Postman)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Estado habilitada\", () => pm.expect(pm.response.json().status).to.eql(\"enabled\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mapear ID local de la app al UUID nacional",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organization-references/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organization-references",
+                ""
+              ]
+            },
+            "description": "La app web identifica a las ONGs con IDs numéricos propios. Esta correspondencia permite a Bonita traducirlos al UUID nacional.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_system\": \"{{sistemaOrigenBonita}}\",\n  \"external_id\": \"ong-local-{{runId}}\",\n  \"organization\": \"{{idOng}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bonita busca la ONG por su ID local",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organization-references/?external_id=ong-local-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organization-references",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "external_id",
+                  "value": "ong-local-{{runId}}"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const resultados = pm.response.json().results;",
+                  "pm.test(\"Devuelve el UUID nacional\", () => pm.expect(resultados[0].organization).to.eql(pm.collectionVariables.get(\"idOng\")));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Certificaciones, inventario y consultas",
+      "description": "El operador certifica a la ONG, la ONG carga su inventario y se consultan ONGs habilitadas, certificaciones, competencia y disponibilidad global.",
+      "item": [
+        {
+          "name": "Emitir certificación a la ONG",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certifications/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certifications",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organization\": \"{{idOng}}\",\n  \"certification_type\": \"{{idTipoCertificacion}}\",\n  \"credential_number\": \"CRED-{{runId}}\",\n  \"issuer\": \"Ministerio de Seguridad (prueba)\",\n  \"valid_from\": \"{{fechaDesde}}\",\n  \"valid_until\": \"{{fechaHasta}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "const cert = pm.response.json();",
+                  "pm.test(\"Certificación vigente\", () => pm.expect(cert.is_current).to.eql(true));",
+                  "pm.collectionVariables.set(\"idCertificacion\", cert.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "La ONG intenta certificarse a sí misma",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certifications/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certifications",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOng}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organization\": \"{{idOng}}\",\n  \"certification_type\": \"{{idTipoCertificacion}}\",\n  \"credential_number\": \"TRUCHA-{{runId}}\",\n  \"issuer\": \"Yo\",\n  \"valid_from\": \"{{fechaDesde}}\",\n  \"valid_until\": \"{{fechaHasta}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "La ONG carga su inventario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inventory/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory",
+                ""
+              ]
+            },
+            "description": "La ONG no indica organización: se toma la del token. No puede cargar inventario de otra ONG.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOng}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource_type\": \"{{idTipoRecurso}}\",\n  \"total_quantity\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "const stock = pm.response.json();",
+                  "pm.test(\"10 disponibles, 0 reservadas\", () => {",
+                  "    pm.expect(stock.available_quantity).to.eql(10);",
+                  "    pm.expect(stock.reserved_quantity).to.eql(0);",
+                  "});",
+                  "pm.collectionVariables.set(\"idInventario\", stock.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar ONGs habilitadas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/?status=enabled",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "enabled"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const resultados = pm.response.json().results;",
+                  "pm.test(\"Todas están habilitadas\", () => resultados.forEach(o => pm.expect(o.status).to.eql(\"enabled\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar certificaciones de la ONG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certifications/?organization={{idOng}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certifications",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "organization",
+                  "value": "{{idOng}}"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const resultados = pm.response.json().results;",
+                  "pm.test(\"Una certificación vigente\", () => {",
+                  "    pm.expect(resultados.length).to.eql(1);",
+                  "    pm.expect(resultados[0].is_current).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Perfil de competencia de la ONG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/{{idOng}}/competence/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{idOng}}",
+                "competence",
+                ""
+              ]
+            },
+            "description": "No responde sí/no: devuelve capacidades con los niveles de riesgo permitidos, como principal y como apoyo.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const perfil = pm.response.json();",
+                  "const principal = perfil.capabilities.find(c => c.capability_code === \"postman-alimentos\");",
+                  "const apoyo = perfil.support_capabilities.find(c => c.capability_code === \"postman-alimentos\");",
+                  "pm.test(\"Habilitada como principal hasta riesgo medio\", () =>",
+                  "    pm.expect(principal.allowed_risk_levels).to.eql([\"low\", \"medium\"]));",
+                  "pm.test(\"Puede actuar como apoyo hasta riesgo bajo\", () =>",
+                  "    pm.expect(apoyo.allowed_risk_levels).to.eql([\"low\"]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disponibilidad global del recurso",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/resources/availability/?resource_code={{codigoRecurso}}&organization={{idOng}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "resources",
+                "availability",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "resource_code",
+                  "value": "{{codigoRecurso}}"
+                },
+                {
+                  "key": "organization",
+                  "value": "{{idOng}}"
+                }
+              ]
+            },
+            "description": "Sin el filtro `organization`, suma el inventario de todas las ONGs habilitadas.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const fila = pm.response.json()[0];",
+                  "pm.test(\"10 disponibles\", () => pm.expect(fila.available_quantity).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Validación por competencia (no reserva)",
+      "description": "Bonita valida las ofertas al vencer la ventana. La respuesta no es un rechazo binario: recomienda asignación principal, de apoyo o ninguna, con observaciones. Validar nunca reserva recursos.",
+      "item": [
+        {
+          "name": "Riesgo medio → asignación principal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/validations/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "validations",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 4,\n      \"risk_level\": \"medium\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const datos = pm.response.json();",
+                  "pm.test(\"No reserva recursos\", () => pm.expect(datos.reserves_resources).to.eql(false));",
+                  "pm.test(\"Recomienda principal sin observaciones\", () => {",
+                  "    pm.expect(datos.items[0].recommended_assignment).to.eql(\"main\");",
+                  "    pm.expect(datos.items[0].observations).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Riesgo alto → apoyo, adaptando el riesgo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/validations/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "validations",
+                ""
+              ]
+            },
+            "description": "La certificación llega a riesgo medio. Para una tarea de riesgo alto no la descarta: propone sumarla como apoyo en riesgo bajo.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 2,\n      \"risk_level\": \"high\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const item = pm.response.json().items[0];",
+                  "pm.test(\"Recomienda apoyo en lugar de rechazar\", () => pm.expect(item.recommended_assignment).to.eql(\"support\"));",
+                  "pm.test(\"Indica que hay que adaptar el riesgo\", () => {",
+                  "    pm.expect(item.observations).to.include(\"main_risk_not_authorized\");",
+                  "    pm.expect(item.observations).to.include(\"adapt_to_support_at_a_permitted_risk_level\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cantidad mayor al stock → máximo asignable",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/validations/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "validations",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 50,\n      \"risk_level\": \"low\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const item = pm.response.json().items[0];",
+                  "pm.test(\"Avisa stock insuficiente\", () => pm.expect(item.observations).to.include(\"insufficient_available_resources\"));",
+                  "pm.test(\"Informa cuánto puede asignarse\", () => pm.expect(item.max_assignable_quantity).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "La validación no reservó nada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/resources/availability/?resource_code={{codigoRecurso}}&organization={{idOng}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "resources",
+                "availability",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "resource_code",
+                  "value": "{{codigoRecurso}}"
+                },
+                {
+                  "key": "organization",
+                  "value": "{{idOng}}"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Sigue con 0 reservadas\", () => pm.expect(pm.response.json()[0].reserved_quantity).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Compromiso con locking e idempotencia",
+      "description": "Después de que el municipio adjudica, Bonita registra el compromiso. La API bloquea las filas de ONG e inventario (SELECT ... FOR UPDATE), reevalúa competencia y stock y reserva todo o nada.",
+      "item": [
+        {
+          "name": "Comprometer recursos adjudicados",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "adjudicacion-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project\": {\n    \"external_id\": \"emergencia-{{runId}}\",\n    \"title\": \"Emergencia de prueba Postman\",\n    \"bonita_case_id\": \"caso-{{runId}}\",\n    \"municipality_ref\": \"municipio-1\",\n    \"risk_level\": \"medium\"\n  },\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 4,\n      \"risk_level\": \"medium\",\n      \"assignment\": \"main\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "const proyecto = pm.response.json();",
+                  "pm.test(\"Proyecto activo con un compromiso\", () => {",
+                  "    pm.expect(proyecto.status).to.eql(\"active\");",
+                  "    pm.expect(proyecto.commitments.length).to.eql(1);",
+                  "});",
+                  "pm.collectionVariables.set(\"idProyecto\", proyecto.id);",
+                  "pm.collectionVariables.set(\"idCompromiso\", proyecto.commitments[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reintento con la misma clave (idempotencia)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "adjudicacion-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                ""
+              ]
+            },
+            "description": "Simula que Bonita no recibió la respuesta (timeout) y reintenta. No se reserva dos veces.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project\": {\n    \"external_id\": \"emergencia-{{runId}}\",\n    \"title\": \"Emergencia de prueba Postman\",\n    \"bonita_case_id\": \"caso-{{runId}}\",\n    \"municipality_ref\": \"municipio-1\",\n    \"risk_level\": \"medium\"\n  },\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 4,\n      \"risk_level\": \"medium\",\n      \"assignment\": \"main\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200 · no crea nada nuevo\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Devuelve el mismo proyecto\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"idProyecto\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Misma clave con otro contenido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "adjudicacion-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project\": {\n    \"external_id\": \"emergencia-{{runId}}\",\n    \"title\": \"Emergencia de prueba Postman\",\n    \"bonita_case_id\": \"caso-{{runId}}\",\n    \"municipality_ref\": \"municipio-1\",\n    \"risk_level\": \"medium\"\n  },\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 5,\n      \"risk_level\": \"medium\",\n      \"assignment\": \"main\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otra emergencia pide más de lo disponible",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "adjudicacion-2-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                ""
+              ]
+            },
+            "description": "Quedan 6 disponibles y se piden 7: se rechaza sin reservar parcialmente.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project\": {\n    \"external_id\": \"emergencia-2-{{runId}}\",\n    \"title\": \"Emergencia de prueba Postman\",\n    \"bonita_case_id\": \"caso-{{runId}}\",\n    \"municipality_ref\": \"municipio-1\",\n    \"risk_level\": \"medium\"\n  },\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 7,\n      \"risk_level\": \"medium\",\n      \"assignment\": \"main\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"No reserva nada (todo o nada)\", () => pm.expect(pm.response.json().detail).to.include(\"No se reservó\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disponibilidad después del compromiso",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/resources/availability/?resource_code={{codigoRecurso}}&organization={{idOng}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "resources",
+                "availability",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "resource_code",
+                  "value": "{{codigoRecurso}}"
+                },
+                {
+                  "key": "organization",
+                  "value": "{{idOng}}"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const fila = pm.response.json()[0];",
+                  "pm.test(\"4 reservadas y 6 disponibles\", () => {",
+                  "    pm.expect(fila.reserved_quantity).to.eql(4);",
+                  "    pm.expect(fila.available_quantity).to.eql(6);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver inventario de la ONG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inventory/{{idInventario}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory",
+                "{{idInventario}}",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOng}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"versionInventario\", pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "La ONG intenta bajar su stock por debajo de lo comprometido",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inventory/{{idInventario}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inventory",
+                "{{idInventario}}",
+                ""
+              ]
+            },
+            "description": "Hay 4 comprometidas. Además de esta validación, la base tiene la restricción `total_quantity >= reserved_quantity`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOng}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"total_quantity\": 3,\n  \"version\": {{versionInventario}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cerrar el proyecto antes de tiempo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{idProyecto}}/close/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{idProyecto}}",
+                "close",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 409 · quedan actividades activas\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Liberación y cierre",
+      "description": "La ONG finaliza su actividad (se liberan sus recursos) y Bonita cierra el proyecto.",
+      "item": [
+        {
+          "name": "La ONG marca su actividad como finalizada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/{{idCompromiso}}/complete/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                "{{idCompromiso}}",
+                "complete",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOng}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Raciones entregadas (prueba Postman)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Compromiso finalizado\", () => pm.expect(pm.response.json().status).to.eql(\"completed\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repetir la finalización (idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/commitments/{{idCompromiso}}/complete/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commitments",
+                "{{idCompromiso}}",
+                "complete",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOng}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Reintento\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Sigue finalizado, sin liberar dos veces\", () => pm.expect(pm.response.json().status).to.eql(\"completed\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recursos liberados",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/resources/availability/?resource_code={{codigoRecurso}}&organization={{idOng}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "resources",
+                "availability",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "resource_code",
+                  "value": "{{codigoRecurso}}"
+                },
+                {
+                  "key": "organization",
+                  "value": "{{idOng}}"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const fila = pm.response.json()[0];",
+                  "pm.test(\"0 reservadas y 10 disponibles\", () => {",
+                  "    pm.expect(fila.reserved_quantity).to.eql(0);",
+                  "    pm.expect(fila.available_quantity).to.eql(10);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cerrar el proyecto",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{idProyecto}}/close/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{idProyecto}}",
+                "close",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Proyecto cerrado\", () => pm.expect(pm.response.json().status).to.eql(\"completed\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repetir el cierre (idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{idProyecto}}/close/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{idProyecto}}",
+                "close",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auditoría del proyecto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/audit-events/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "audit-events",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const proyecto = pm.collectionVariables.get(\"idProyecto\");",
+                  "const acciones = pm.response.json().results.filter(e => e.project === proyecto).map(e => e.action);",
+                  "pm.test(\"Registra compromiso, finalización y cierre\", () => {",
+                  "    pm.expect(acciones).to.include(\"project.committed\");",
+                  "    pm.expect(acciones).to.include(\"commitment.completed\");",
+                  "    pm.expect(acciones).to.include(\"project.closed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Revocación de certificación",
+      "description": "Al revocar la certificación, la ONG no queda descartada: pasa a poder participar solo como apoyo.",
+      "item": [
+        {
+          "name": "Revocar la certificación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/certifications/{{idCertificacion}}/revoke/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "certifications",
+                "{{idCertificacion}}",
+                "revoke",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Vencimiento de la habilitación (prueba Postman)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Ya no está vigente\", () => pm.expect(pm.response.json().is_current).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validar después de la revocación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/validations/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "validations",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenBonita}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"organization\": \"{{idOng}}\",\n      \"resource_code\": \"{{codigoRecurso}}\",\n      \"lot_ref\": \"lote-1\",\n      \"quantity\": 2,\n      \"risk_level\": \"low\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const item = pm.response.json().items[0];",
+                  "pm.test(\"Sin habilitación principal\", () => pm.expect(item.main_allowed_risk_levels).to.eql([]));",
+                  "pm.test(\"Puede participar como apoyo\", () => pm.expect(item.recommended_assignment).to.eql(\"support\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. Limpieza y cierre de sesión",
+      "description": "Suspende la ONG de prueba para que no aparezca entre las habilitadas y revoca la sesión del operador.",
+      "item": [
+        {
+          "name": "Suspender la ONG de prueba",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/organizations/{{idOng}}/status/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{idOng}}",
+                "status",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\",\n  \"reason\": \"Fin de la prueba Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cerrar sesión (logout)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenOperador}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refreshOperador}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Usar el refresh después del logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh",
+                ""
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refreshOperador}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401 · el refresh quedó revocado\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "ongUsuario",
+      "value": ""
+    },
+    {
+      "key": "ongContrasena",
+      "value": ""
+    },
+    {
+      "key": "ongRegistro",
+      "value": ""
+    },
+    {
+      "key": "fechaDesde",
+      "value": ""
+    },
+    {
+      "key": "fechaHasta",
+      "value": ""
+    },
+    {
+      "key": "tokenOperador",
+      "value": ""
+    },
+    {
+      "key": "refreshOperador",
+      "value": ""
+    },
+    {
+      "key": "refreshViejo",
+      "value": ""
+    },
+    {
+      "key": "tokenBonita",
+      "value": ""
+    },
+    {
+      "key": "tokenOng",
+      "value": ""
+    },
+    {
+      "key": "sistemaOrigenBonita",
+      "value": ""
+    },
+    {
+      "key": "codigoRecurso",
+      "value": ""
+    },
+    {
+      "key": "idTipoRecurso",
+      "value": ""
+    },
+    {
+      "key": "codigoCertificacion",
+      "value": ""
+    },
+    {
+      "key": "idTipoCertificacion",
+      "value": ""
+    },
+    {
+      "key": "idOng",
+      "value": ""
+    },
+    {
+      "key": "idCertificacion",
+      "value": ""
+    },
+    {
+      "key": "idInventario",
+      "value": ""
+    },
+    {
+      "key": "versionInventario",
+      "value": ""
+    },
+    {
+      "key": "idProyecto",
+      "value": ""
+    },
+    {
+      "key": "idCompromiso",
+      "value": ""
+    }
+  ]
+}

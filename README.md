@@ -127,6 +127,7 @@ El inventario usa `version`: tanto las reservas como las liberaciones la increme
 - [Integración con el backend y Bonita](docs/INTEGRACION_BONITA.md): correspondencias de IDs, contratos y orden del proceso.
 - [Despliegue en Render o servidor](docs/DESPLIEGUE.md): secretos, HTTPS, migraciones, operación y publicación del repositorio.
 - [Validación y trazabilidad de entrega 3](docs/ENTREGA_3.md).
+- [Recorrido de prueba con Postman](docs/postman/README.md): colección y entornos para ejecutar el ciclo completo contra la API desplegada o local.
 - [Ejemplo de validación](docs/examples/validation.json) y [adjudicación](docs/examples/commitment.json): reemplazar el UUID ilustrativo por el UUID nacional real.
 
 ## Verificación
