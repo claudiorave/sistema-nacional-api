@@ -48,24 +48,28 @@ Fecha: **11 de octubre de 2026**.
 
 Las pruebas concurrentes cubren emergencias competidoras, reintentos idénticos, edición simultánea de inventario, finalizaciones duplicadas, claves distintas sobre una misma emergencia, orden inverso de ONGs y revocación de credenciales durante una adjudicación.
 
-## Pendiente antes de la entrega pública
+## Despliegue
 
-No se crearon repositorios remotos, no se desplegó en una cuenta cloud y no se modificó/desplegó el BOS de Bonita. La imagen Docker y el arranque con Compose sí quedaron probados localmente. La API está publicada localmente en el puerto 8002 y tiene cuentas/catálogo ficticios de demostración.
+La API está desplegada con Docker Compose (API con Gunicorn, PostgreSQL 17 y Redis 7) en un servidor propio del equipo, detrás de un proxy con HTTPS. En producción `DEBUG=false` y no existen las cuentas demo: `seed_demo` se niega a ejecutarse fuera de desarrollo. Las cuentas operativas son `operador_nacional` (operador nacional) y `bonita_rescuesync` (cuenta de servicio de Bonita); sus contraseñas se entregan por separado.
 
-Para completar la evidencia pública que pide la cátedra:
-
-1. Publicar esta carpeta como repositorio y ejecutar su CI, incluida la construcción Docker.
-2. Configurar los secretos y desplegar en el servidor/proveedor elegido; verificar salud y un ciclo operativo en ese entorno.
-3. Completar las URLs reales de abajo.
-4. Conectar/ensayar la copia de etapa 3 de Bonita según `INTEGRACION_BONITA.md`.
-
-| Artefacto solicitado | Ubicación/estado |
+| Artefacto solicitado | Ubicación |
 |---|---|
-| Repositorio | Pendiente de publicación por el equipo |
-| API pública | Pendiente del despliegue |
-| Swagger público | `<URL_REAL_API>/api/docs/`, una vez desplegado |
-| Swagger versionado | `docs/openapi.yaml` |
-| Dockerfile | `Dockerfile` |
+| Swagger | https://sistema-nacional.claudioraverta.site/api/docs/ |
+| ReDoc | https://sistema-nacional.claudioraverta.site/api/redoc/ |
+| OpenAPI | https://sistema-nacional.claudioraverta.site/api/schema/ (versionado en `docs/openapi.yaml`) |
+| Base de la API | https://sistema-nacional.claudioraverta.site/api/v1/ (login también en `/login`) |
+| Salud | https://sistema-nacional.claudioraverta.site/health/ready/ |
+| Repositorio | https://github.com/claudiorave/sistema-nacional-api |
+| Dockerfile | https://github.com/claudiorave/sistema-nacional-api/blob/main/Dockerfile |
+| Recorrido de prueba | [`docs/postman/`](postman/README.md): colección de Postman con 54 pedidos y 94 verificaciones |
 | Guía de despliegue | `docs/DESPLIEGUE.md` |
 
-No se inventaron URLs ni se presentó preparación de despliegue como despliegue realizado.
+La raíz del dominio no tiene página y responde 404; los puntos de entrada son los de la tabla.
+
+## Recorrido con Postman
+
+La colección de `docs/postman/` ejecuta el ciclo completo contra la API: JWT y revocación de refresh, protección por rol, onboarding y habilitación de una ONG, certificación, inventario, perfil de competencia, validación sin reserva, compromiso con `Idempotency-Key`, sobreasignación rechazada sin reservas parciales, liberación, cierre bilateral y revocación de la certificación. La concurrencia real se demuestra con la suite automática (`tests/test_concurrency.py`), no con Postman, que envía los pedidos de a uno.
+
+## Fuera del alcance de esta entrega
+
+La conexión del proceso de Bonita con esta API (validación, compromiso, liberación y cierre desde tareas automáticas) corresponde a la integración final. El contrato está documentado en `INTEGRACION_BONITA.md`.
