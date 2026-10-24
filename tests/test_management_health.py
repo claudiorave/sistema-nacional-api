@@ -90,6 +90,11 @@ class ManagementHealthTests(NationalTestCase):
             self.assertEqual(response.status_code, 503)
             self.assertNotIn("redis", str(response.data))
 
+    def test_root_redirects_to_swagger(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/api/docs/")
+
     def test_operational_database_failure_is_retryable_without_internal_details(self):
         with patch(
             "national.views.services.commit_resources",

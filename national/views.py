@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.db import DatabaseError, connection, transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from redis.exceptions import RedisError
 from rest_framework import mixins, serializers, status, viewsets
@@ -360,7 +361,13 @@ class AvailabilitySerializer(serializers.Serializer):
 class AvailabilityView(APIView):
     throttle_scope = "api"
 
-    @extend_schema(responses=AvailabilitySerializer(many=True))
+    @extend_schema(
+        responses=AvailabilitySerializer(many=True),
+        parameters=[
+            OpenApiParameter("organization", OpenApiTypes.UUID, description="UUID nacional de la ONG."),
+            OpenApiParameter("resource_code", str, description="Código del recurso, ej. food-ration."),
+        ],
+    )
     def get(self, request):
         query = Inventory.objects.filter(organization__status=Organization.Status.ENABLED)
         query = uuid_filter(query, request, "organization")

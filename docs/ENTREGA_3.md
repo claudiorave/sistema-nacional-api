@@ -50,7 +50,7 @@ Las pruebas concurrentes cubren emergencias competidoras, reintentos idénticos,
 
 ## Despliegue
 
-La API está desplegada con Docker Compose (API con Gunicorn, PostgreSQL 17 y Redis 7) en un servidor propio del equipo, detrás de un proxy con HTTPS. En producción `DEBUG=false` y no existen las cuentas demo: `seed_demo` se niega a ejecutarse fuera de desarrollo. Las cuentas operativas son `operador_nacional` (operador nacional) y `bonita_rescuesync` (cuenta de servicio de Bonita); sus contraseñas se entregan por separado.
+La API está desplegada con Docker Compose (API con Gunicorn, PostgreSQL 17 y Redis 7) en un servidor propio del equipo, detrás de un proxy con HTTPS. En producción `DEBUG=false` y no existen las cuentas demo: `seed_demo` se niega a ejecutarse fuera de desarrollo. Las cuentas operativas son `operador_nacional` (operador nacional) y `bonita_rescuesync` (cuenta de servicio de Bonita). Para la corrección hay cuentas separadas, `evaluacion_g20_nacional`, `evaluacion_g20_servicio` y `evaluacion_g20_ong`, con datos precargados propios; sus contraseñas figuran en el documento de entrega y no en el repositorio.
 
 | Artefacto solicitado | Ubicación |
 |---|---|
@@ -64,7 +64,7 @@ La API está desplegada con Docker Compose (API con Gunicorn, PostgreSQL 17 y Re
 | Recorrido de prueba | [`docs/postman/`](postman/README.md): colección de Postman con 54 pedidos y 94 verificaciones |
 | Guía de despliegue | `docs/DESPLIEGUE.md` |
 
-La raíz del dominio no tiene página y responde 404; los puntos de entrada son los de la tabla.
+La raíz del dominio redirige al Swagger.
 
 ## Recorrido con Postman
 

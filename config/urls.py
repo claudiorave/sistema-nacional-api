@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 
@@ -17,6 +18,8 @@ router.register("commitments", views.CommitmentViewSet, basename="commitment")
 router.register("audit-events", views.AuditViewSet, basename="audit-event")
 
 urlpatterns = [
+    # La raíz no tiene contenido propio: lleva a la documentación interactiva.
+    path("", RedirectView.as_view(pattern_name="swagger-ui", permanent=False), name="root"),
     path("admin/", admin.site.urls),
     # Alias exacto solicitado en el enunciado. El contrato canónico está versionado.
     path("login", views.LoginView.as_view(), name="login-exact"),

@@ -805,6 +805,18 @@ paths:
   /api/v1/resources/availability/:
     get:
       operationId: api_v1_resources_availability_list
+      parameters:
+      - in: query
+        name: organization
+        schema:
+          type: string
+          format: uuid
+        description: UUID nacional de la ONG.
+      - in: query
+        name: resource_code
+        schema:
+          type: string
+        description: Código del recurso, ej. food-ration.
       tags:
       - api
       security:

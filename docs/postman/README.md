@@ -13,7 +13,7 @@ La colección `sistema-nacional.postman_collection.json` recorre la API de punta
 ## Cómo ejecutarla
 
 1. En Postman: **Import** → seleccionar los tres archivos.
-2. Elegir el entorno `Sistema Nacional - produccion` (arriba a la derecha) y completar `contrasenaOperador` y `contrasenaBonita`. Las contraseñas no están en el repositorio: se envían aparte, junto con la entrega.
+2. Elegir el entorno `Sistema Nacional - produccion` (arriba a la derecha) y completar `contrasenaOperador` y `contrasenaBonita`. El entorno ya trae las cuentas de evaluación `evaluacion_g20_nacional` y `evaluacion_g20_servicio`; sus contraseñas no están en el repositorio y figuran en el documento de entrega.
 3. Sobre la colección: **Run collection** → **Run**. Los pedidos tienen que ejecutarse en orden, porque cada uno guarda en variables lo que usan los siguientes (tokens, UUID de la ONG, del proyecto y del compromiso).
 
 También se puede recorrer a mano, pedido por pedido, empezando siempre por **0. Preparación**. La descripción de cada pedido explica qué demuestra.
